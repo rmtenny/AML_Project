@@ -1,2 +1,2 @@
 # AML_Project
-Empirical Asset Pricing
+Course Project for Applied Machine learning: Empirical Asset Pricing
