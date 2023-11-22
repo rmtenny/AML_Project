@@ -28,8 +28,8 @@ df_val = df_val.dropna(subset = 'RET')
 
 y_train = df["RET"]
 X_train = df.drop(columns=["DATE","permno","RET"])
-y_val = df["RET"]
-X_val = df.drop(columns=["DATE","permno","RET"])
+y_val = df_val["RET"]
+X_val = df_val.drop(columns=["DATE","permno","RET"])
 
 
 # tsne = TSNE(n_components=3, perplexity=30, n_iter=250, random_state=42)
