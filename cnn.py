@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader
 import torchvision
 from sklearn.metrics import accuracy_score
 import matplotlib.pyplot as plt
-import tqdm
+from tqdm import tqdm
 import copy
 
 ## Pull in data ---------------------------------------------------
@@ -34,9 +34,9 @@ df = pd.read_csv('data/train_dataset_top.csv', index_col = 0)
 df_val = pd.read_csv('data/val_dataset_top.csv', index_col = 0)
 df_test = pd.read_csv('data/test_dataset_top.csv', index_col = 0)
 
-df.sort_values('mvel1',ascending=False).groupby('DATE').head(10).reset_index(drop=True)
-df_val.sort_values('mvel1',ascending=False).groupby('DATE').head(10).reset_index(drop=True)
-df_test.sort_values('mvel1',ascending=False).groupby('DATE').head(10).reset_index(drop=True)
+# df.sort_values('mvel1',ascending=False).groupby('DATE').head(10).reset_index(drop=True)
+# df_val.sort_values('mvel1',ascending=False).groupby('DATE').head(10).reset_index(drop=True)
+# df_test.sort_values('mvel1',ascending=False).groupby('DATE').head(10).reset_index(drop=True)
 
 # df = pd.read_csv('data/train_dataset_bot.csv', index_col = 0)
 # df_val = pd.read_csv('data/val_dataset_bot.csv', index_col = 0)
@@ -53,6 +53,13 @@ X_val = df_val.drop(columns=["DATE","permno","RET"])
 y_test = df_test["RET"]
 X_test = df_test.drop(columns=["DATE","permno","RET"])
 
+def R_oss(true,pred):
+    true = true.detach().numpy()
+    pred = pred.detach().numpy()
+    numer = np.dot((true-pred).T,(true-pred))
+    denom = np.dot(true.T,true)
+    frac = numer/denom
+    return 1-frac
 
 ## Build model ------------------------------------
 # Convert to 2D PyTorch tensors
@@ -72,53 +79,56 @@ y_test = torch.tensor(y_test_np, dtype=torch.float32).reshape(-1, 1)
  
 # Define the model
 model = nn.Sequential(
-    nn.Linear(911, 24),
+    nn.Linear(911, 400),
     nn.ReLU(),
-    nn.Linear(24, 12),
+    nn.Linear(400, 100),
     nn.ReLU(),
-    nn.Linear(12, 6),
+    nn.Linear(100, 10),
     nn.ReLU(),
-    nn.Linear(6, 1)
+    nn.Linear(10, 1)
 )
  
 # loss function and optimizer
 loss_fn = nn.MSELoss()  # mean square error
 optimizer = optim.Adam(model.parameters(), lr=0.0001)
  
-n_epochs = 100   # number of epochs to run
-batch_size = 10  # size of each batch
+n_epochs = 1000   # number of epochs to run
+batch_size = 1  # size of each batch
 batch_start = torch.arange(0, len(X_train), batch_size)
  
 # Hold the best model
 best_mse = np.inf   # init to infinity
 best_weights = None
 history = []
+r2Hist = []
  
 for epoch in range(n_epochs):
     print('epoch {}'.format(epoch))
     model.train()
-    with tqdm.tqdm(batch_start, unit="batch", mininterval=0, disable=True) as bar:
+    with tqdm(batch_start, unit="batch", mininterval=0, disable=True) as bar:
         bar.set_description(f"Epoch {epoch}")
         for start in bar:
             # take a batch
             X_batch = X_train[start:start+batch_size]
             y_batch = y_train[start:start+batch_size]
             # forward pass
+            # m = nn.ZeroPad2d((1, 1, 1, 1))
             y_pred = model(X_batch)
             loss = loss_fn(y_pred, y_batch)
             # backward pass
             optimizer.zero_grad()
             loss.backward()
-            # update weights
             optimizer.step()
-            # print progress
             bar.set_postfix(mse=float(loss))
     # evaluate accuracy at end of each epoch
     model.eval()
-    y_pred = model(X_test)
-    mse = loss_fn(y_pred, y_test)
+    y_pred = model(X_val)
+    mse = loss_fn(y_pred, y_val)
     mse = float(mse)
+    r2 = np.squeeze(R_oss(y_pred, y_val))
     history.append(mse)
+    r2Hist.append(r2)
+    print(f"Val Loss: {mse} R2: {r2}")
     if mse < best_mse:
         best_mse = mse
         best_weights = copy.deepcopy(model.state_dict())
@@ -126,6 +136,14 @@ for epoch in range(n_epochs):
 # restore model and return best accuracy
 model.load_state_dict(best_weights)
 print("MSE: %.2f" % best_mse)
-print("RMSE: %.2f" % np.sqrt(best_mse))
 plt.plot(history)
+plt.plot(r2Hist)
 plt.show()
+
+## Evaluate best model ----------------------------------------
+model.eval()
+y_pred = model(X_test)
+mse = loss_fn(y_pred, y_test)
+mse = float(mse)
+r2 = np.squeeze(R_oss(y_pred, y_test))
+print(f"Val Loss: {mse} R2: {r2}")
