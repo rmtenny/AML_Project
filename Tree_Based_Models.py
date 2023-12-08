@@ -312,7 +312,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import make_scorer
 
 params = {
-    'objective':[None, huber_objective],
+#    'objective':[None, huber_objective],
     'max_depth':[1,2,3,4,5,6,7,8,9,10],
     'num_leaves': [10,30,50,80],
     'n_estimators':[10,50,100,200,500],
@@ -332,7 +332,7 @@ joblib.dump(LGBM_all, 'model_details/LGBM_all_top.joblib')
 ###############################################################################
 
 params = {
-    'objective':[None, huber_objective],
+#    'objective':[None, huber_objective],
     'max_depth':[1,2,3,4,5,6,7,8,9,10],
     'num_leaves': [10,30,50,80],
     'n_estimators':[10,50,100,200,500],
@@ -354,7 +354,7 @@ joblib.dump(LGBM, 'model_details/LGBM_top.joblib')
 import xgboost as xgb
 
 params = {
-    'objective': [None, huber_objective],  # Using Huber loss for regression
+#    'objective': [None, huber_objective],  # Using Huber loss for regression
     'max_depth': [1,2,3,4,5,6,7,8,9,10],  # Adjust the maximum depth of the trees
     'learning_rate': [0.1],
     'subsample': [0.8],
@@ -376,7 +376,7 @@ joblib.dump(XGBoost_all, 'model_details/XGBoost_all_top.joblib')
 ###############################################################################
 
 params = {
-    'objective': [None, huber_objective],  # Using Huber loss for regression
+#    'objective': [None, huber_objective],  # Using Huber loss for regression
     'max_depth': [1,2,3,4,5,6,7,8,9,10],  # Adjust the maximum depth of the trees
     'learning_rate': [0.1],
     'subsample': [0.8],
