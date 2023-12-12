@@ -9,7 +9,7 @@ import torch
 from sklearn.preprocessing import MinMaxScaler
 
 
-df = pd.read_csv('equity_chars_ret.csv', index_col = 0)
+df = pd.read_csv('data/equity_chars_ret.csv', index_col = 0)
 df['RET'] = pd.to_numeric(df['RET'], errors='coerce')
 characteristics = list(set(df.columns).difference({'permno','DATE', 'sic2', 'RET'}))
 

@@ -9,7 +9,6 @@ import torch.utils.data as data
 import copy
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
-
 ## Pull in data ---------------------------------------------------
 split = 'top'
 if split == 'all':
@@ -36,9 +35,9 @@ elif split == 'bot':
     # Epoch 19: train RMSE 0.2214, test RMSE 0.3309, r2 0.0020
 
 # Trim data for testing
-# df.sort_values('mvel1',ascending=False).groupby('DATE').head(1).reset_index(drop=True)
-# df_val.sort_values('mvel1',ascending=False).groupby('DATE').head(1).reset_index(drop=True)
-# df_test.sort_values('mvel1',ascending=False).groupby('DATE').head(1).reset_index(drop=True)
+df.sort_values('mvel1',ascending=False).groupby('DATE').head(100).reset_index(drop=True)
+df_val.sort_values('mvel1',ascending=False).groupby('DATE').head(100).reset_index(drop=True)
+df_test.sort_values('mvel1',ascending=False).groupby('DATE').head(100).reset_index(drop=True)
 
 # Make sure no nan exist
 df = df.dropna(subset = 'RET')
@@ -60,13 +59,44 @@ y_val_np = y_val.to_numpy()
 X_test_np = X_test.to_numpy() 
 y_test_np = y_test.to_numpy() 
 
-X_train = torch.tensor(X_train_np, dtype=torch.float32)
-y_train = torch.tensor(y_train_np, dtype=torch.float32).reshape(-1, 1)
-X_val = torch.tensor(X_val_np, dtype=torch.float32)
-y_val = torch.tensor(y_val_np, dtype=torch.float32).reshape(-1, 1)
-X_test = torch.tensor(X_test_np, dtype=torch.float32)
-y_test = torch.tensor(y_test_np, dtype=torch.float32).reshape(-1, 1)
+mm = MinMaxScaler()
+y_trans_train = mm.fit_transform(y_train_np.reshape(-1, 1))
+y_trans_val = mm.fit_transform(y_val_np.reshape(-1, 1))
+y_trans_test = mm.fit_transform(y_test_np.reshape(-1, 1))
+
+# split a multivariate sequence past, future samples (X and y)
+def split_sequences(input_sequences, output_sequence, n_steps_in, n_steps_out):
+    X, y = list(), list() # instantiate X and y
+    for i in range(len(input_sequences)):
+        # find the end of the input, output sequence
+        end_ix = i + n_steps_in
+        out_end_ix = end_ix + n_steps_out - 1
+        # check if we are beyond the dataset
+        if out_end_ix > len(input_sequences): break
+        # gather input and output of the pattern
+        seq_x, seq_y = input_sequences[i:end_ix], output_sequence[end_ix-1:out_end_ix, -1]
+        X.append(seq_x), y.append(seq_y)
+    return np.array(X), np.array(y)
+    
+X_train_np, y_trans_train = split_sequences(X_train_np, y_trans_train, 10, 5)
+X_val_np, y_trans_val = split_sequences(X_val_np, y_trans_val, 10, 5)
+X_test_np, y_trans_test = split_sequences(X_test_np, y_trans_test, 10, 5)
+
+
+X_train = Variable(torch.tensor(X_train_np, dtype=torch.float32))
+y_train = Variable(torch.tensor(y_trans_train, dtype=torch.float32))
+X_val = Variable(torch.tensor(X_val_np, dtype=torch.float32))
+y_val = Variable(torch.tensor(y_trans_val, dtype=torch.float32))
+X_test = Variable(torch.tensor(X_test_np, dtype=torch.float32))
+y_test = Variable(torch.tensor(y_trans_test, dtype=torch.float32))
  
+# X_train = torch.reshape(X_train,   
+#                         (X_train.shape[0], 10, 
+#                         X_train.shape[2]))
+# X_val = torch.reshape(X_val,  
+#                     (X_val.shape[0], 10, 
+#                     X_val.shape[2])) 
+
 def R_oss(true,pred):
     true = true.detach().numpy()
     pred = pred.detach().numpy()
@@ -76,8 +106,9 @@ def R_oss(true,pred):
     return 1-frac
 
 # train-test split for time series
-train_size = int(len(X_train))
-test_size = len(X_test)
+# train_size = int(len(X_train))
+# test_size = len(X_test)
+
 
 class Model(nn.Module):
     def __init__(self, input_dim, hidden_dim, layer_dim, output_dim):
@@ -86,71 +117,64 @@ class Model(nn.Module):
         self.num_layers = layer_dim
         self.input_size = input_dim
         self.hidden_size = hidden_dim
+        self.dropout = nn.Dropout(p = 0.2)
         
         self.lstm1 = nn.LSTM(input_size=self.input_size, hidden_size=self.hidden_size,
-                            num_layers=self.num_layers, batch_first=True, dropout = 0.25)
+                            num_layers=self.num_layers, batch_first=True, dropout=0.2)
 
-        # self.lstm1 = nn.LSTM(input_size=self.input_size, hidden_size=100, num_layers=2, batch_first=True) 
-        self.linear1 = nn.Linear(self.hidden_size, 10)
+        self.linear1 = nn.Linear(self.hidden_size, 25)
         self.relu = nn.ReLU()
-        self.linear2 = nn.Linear(10, self.num_classes)
+        self.linear2 = nn.Linear(25, self.num_classes)
+    # def forward(self, x, mem1, mem2):
     def forward(self, x):
         h_0 = torch.squeeze(Variable(torch.zeros(self.num_layers, x.size(0), self.hidden_size).requires_grad_()))
         c_0 = torch.squeeze(Variable(torch.zeros(self.num_layers, x.size(0), self.hidden_size).requires_grad_()))
 
         res, (h_out, _) = self.lstm1(x, (h_0, c_0))
-        res = res[:,0,:]
         # h_out = h_out.view(-1, self.hidden_size)
         h_out = h_out[self.num_layers - 1,:,:]
-        # out = self.linear1(res)
-        out = self.linear1(h_out)
+        out = self.relu(h_out)
+        out = self.linear1(out)
         out = self.relu(out)
         out = self.linear2(out)
         return out
- 
-model = Model(ips, 100, 2, 1)
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+model = Model(ips, 100, 4, 1)
+optimizer = optim.Adam(model.parameters(), lr=0.01)
 loss_fn = nn.MSELoss()
-bs = 5
-loader = data.DataLoader(data.TensorDataset(X_train, y_train), shuffle=False, batch_size=bs)
+# bs = 256
+# loader = data.DataLoader(data.TensorDataset(X_train, y_train), shuffle=False, batch_size=bs)
 
 # Test ---------------------------------------
 # model = torch.load('./model_top.pth')
-# model.eval()
+# model.eval()c
 
 # pred = model(X_test)
 # r_squared = R_oss(y_test, pred)
-# y_pred = np.squeeze(pred.detach().numpy())
+# pred = np.squeeze(pred.detach().numpy())
 # df_save = df_test.filter(["permno","DATE","RET"], axis=1)
 # # add pred
-# df_save.insert(2, "pred", y_pred, True)
+# df_save.insert(2, "pred", pred, True)
 # # create new df
 # # save
 # df_save.to_csv('lstm_top.csv')
 
 best_mse = np.inf   # init to infinity
 best_weights = None 
-n_epochs = 100
+n_epochs = 5
 for epoch in range(n_epochs):
     model.train()
-    for X_batch, y_batch in loader:
-        X_batch = torch.reshape(X_batch,(X_batch.shape[0],1,X_batch.shape[1]))
-        if X_batch.shape != torch.Size([bs,1,ips]):
-            continue
-        y_pred = model.forward(X_batch)
-        # y_pred,mem1,mem2 = model(X_batch)
-        loss = loss_fn(y_pred, y_batch)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+    y_pred = model.forward(X_train)
+    loss = loss_fn(y_pred, y_train)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
     # Validation
     model.eval()
     with torch.no_grad():
-        X_train_rsp = torch.reshape(X_train,(X_train.shape[0],1,X_train.shape[1]))
-        y_pred = model(X_train_rsp)
+        y_pred = model(X_train)
         train_rmse = np.sqrt(loss_fn(y_pred, y_train))
-        X_test_rsp = torch.reshape(X_test,(X_test.shape[0],1,X_test.shape[1]))
-        y_pred = model(X_test_rsp)
+        y_pred = model(X_test)
         test_rmse = np.sqrt(loss_fn(y_pred, y_test))
         r2 = R_oss(y_test,y_pred)
     if test_rmse < best_mse:
@@ -160,7 +184,7 @@ for epoch in range(n_epochs):
  
 ## Evaluate best model ----------------------------------------
 model.load_state_dict(best_weights)
-name = 'model2' + name + '.pth'
+name = 'model' + name + '.pth'
 torch.save(model, name)
 model.eval()
 y_pred = model(X_test)
@@ -168,7 +192,6 @@ mse = loss_fn(y_pred, y_test)
 mse = float(mse)
 r2 = np.squeeze(R_oss(y_pred, y_test))
 print(f"Val Loss: {mse} R2: {r2}")
-y_pred = np.squeeze(y_pred.detach().numpy())
 
 # Plot the validation curve --------------------------------------------
 plt.plot(y_test, color='green', marker='o')

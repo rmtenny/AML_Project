@@ -15,22 +15,26 @@ from sklearn.metrics import mean_squared_error, r2_score
 # df = pd.read_csv('data/train_dataset.csv', index_col = 0)
 # df_val = pd.read_csv('data/val_dataset.csv', index_col = 0)
 
-# df = pd.read_csv('data/train_dataset_top.csv', index_col = 0)
-# df_val = pd.read_csv('data/val_dataset_top.csv', index_col = 0)
+df = pd.read_csv('data/train_dataset_top.csv', index_col = 0)
+df_val = pd.read_csv('data/val_dataset_top.csv', index_col = 0)
+df_test = pd.read_csv('data/test_dataset_top.csv', index_col = 0)
 
-# df.sort_values('mvel1',ascending=False).groupby('DATE').head(1000).reset_index(drop=True)
-# df_val.sort_values('mvel1',ascending=False).groupby('DATE').head(1000).reset_index(drop=True)
+# df.sort_values('mvel1',ascending=False).groupby('DATE').head(100).reset_index(drop=True)
+# df_val.sort_values('mvel1',ascending=False).groupby('DATE').head(100).reset_index(drop=True)
 
-df = pd.read_csv('data/train_dataset_bot.csv', index_col = 0)
-df_val = pd.read_csv('data/val_dataset_bot.csv', index_col = 0)
+# df = pd.read_csv('data/train_dataset_bot.csv', index_col = 0)
+# df_val = pd.read_csv('data/val_dataset_bot.csv', index_col = 0)
 
 df = df.dropna(subset = 'RET')
 df_val = df_val.dropna(subset = 'RET')
+df_test = df_test.dropna(subset = 'RET')
 
 y_train = df["RET"]
 X_train = df.drop(columns=["DATE","permno","RET"])
 y_val = df_val["RET"]
 X_val = df_val.drop(columns=["DATE","permno","RET"])
+y_test = df_test["RET"]
+X_test = df_test.drop(columns=["DATE","permno","RET"])
 
 # Define out of sample R2 -------------------------------------------
 def R_oss(true,pred):
@@ -51,6 +55,34 @@ def R_oss(true,pred):
 # adjusted_r_squared_tsne = 1 - (1-r_squared_tsne)*(len(y_val)-1)/(len(y_val)-X_val_tsne.shape[1]-1)
 # print("R^2 with {} components tsne: {}".format(3,r_squared_tsne))
 
+
+# df_save = df_test.filter(["permno","DATE","RET"], axis=1)
+# # add pred
+# X_test_tsne = tsne.fit_transform(X_test)
+# linFitTsne = LinearRegression().fit(X_test_tsne,y_test)
+# pred = linFitTsne.predict(X_test_tsne)
+# df_save.insert(2, "pred", pred, True)
+# # create new df
+# # save
+# df_save.to_csv('tsne_top.csv')
+
+# Test PCA model ---------------------------------
+
+pca = PCA(n_components=100)
+pca.fit(X_train,y_train)
+X_train_new = pca.transform(X_train)
+X_test_new = pca.transform(X_test)
+linFit = LinearRegression().fit(X_train_new, y_train)
+pred = linFit.predict(X_test_new)
+r_squared = R_oss(y_test, pred)
+y_val_per = linFit.predict(X_test_new)
+df_save = df_test.filter(["permno","DATE","RET"], axis=1)
+# add pred
+df_save.insert(2, "pred", pred, True)
+# create new df
+# save
+df_save.to_csv('pcr_top.csv')
+
 # Determine Best PCA model ----------------------------
 vars = []
 r2s = []
@@ -58,7 +90,7 @@ ar2s = []
 r2s_tsne = []
 ar2s_tsne = []
 mses = []
-nums = range(50,150,1)
+nums = range(1,150,1)
 for num in nums:
     pca = PCA(n_components=num)
     pca.fit(X_train,y_train)
@@ -80,11 +112,11 @@ for num in nums:
     mses.append(mse)
     print("Cumulative variance explained by {} components is {}".format(num,var)) #cumulative sum of variance explained with [n] features
 plt.plot(nums,vars, label='variance')
-plt.plot(nums,r2s, label='r2')
-plt.plot(nums,ar2s, label='ar2')
+# plt.plot(nums,r2s, label='r2')
+# plt.plot(nums,ar2s, label='ar2')
 # plt.plot(nums,r2s_tsne, label='r2_tsne')
 # plt.plot(nums,ar2s_tsne, label='ar2 tsne')
-plt.plot(nums,mses,label='MSE')
+# plt.plot(nums,mses,label='MSE')
 
 plt.title('PCA')
 plt.xlabel("num PCA Components")

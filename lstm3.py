@@ -36,9 +36,9 @@ elif split == 'bot':
     # Epoch 19: train RMSE 0.2214, test RMSE 0.3309, r2 0.0020
 
 # Trim data for testing
-# df.sort_values('mvel1',ascending=False).groupby('DATE').head(1).reset_index(drop=True)
-# df_val.sort_values('mvel1',ascending=False).groupby('DATE').head(1).reset_index(drop=True)
-# df_test.sort_values('mvel1',ascending=False).groupby('DATE').head(1).reset_index(drop=True)
+# df.sort_values('mvel1',ascending=False).groupby('DATE').head(10).reset_index(drop=True)
+# df_val.sort_values('mvel1',ascending=False).groupby('DATE').head(10).reset_index(drop=True)
+# df_test.sort_values('mvel1',ascending=False).groupby('DATE').head(10).reset_index(drop=True)
 
 # Make sure no nan exist
 df = df.dropna(subset = 'RET')
@@ -87,28 +87,16 @@ class Model(nn.Module):
         self.input_size = input_dim
         self.hidden_size = hidden_dim
         
-        self.lstm1 = nn.LSTM(input_size=self.input_size, hidden_size=self.hidden_size,
-                            num_layers=self.num_layers, batch_first=True, dropout = 0.25)
-
-        # self.lstm1 = nn.LSTM(input_size=self.input_size, hidden_size=100, num_layers=2, batch_first=True) 
-        self.linear1 = nn.Linear(self.hidden_size, 10)
-        self.relu = nn.ReLU()
-        self.linear2 = nn.Linear(10, self.num_classes)
+        self.lstm1 = nn.LSTM(input_size=self.input_size, hidden_size=100, num_layers=2, batch_first=True)
+        self.lstm2 = nn.LSTM(input_size=100, hidden_size=10, num_layers=4, batch_first=True)
+        self.linear1 = nn.Linear(10, 1)
     def forward(self, x):
-        h_0 = torch.squeeze(Variable(torch.zeros(self.num_layers, x.size(0), self.hidden_size).requires_grad_()))
-        c_0 = torch.squeeze(Variable(torch.zeros(self.num_layers, x.size(0), self.hidden_size).requires_grad_()))
-
-        res, (h_out, _) = self.lstm1(x, (h_0, c_0))
-        res = res[:,0,:]
-        # h_out = h_out.view(-1, self.hidden_size)
-        h_out = h_out[self.num_layers - 1,:,:]
-        # out = self.linear1(res)
-        out = self.linear1(h_out)
-        out = self.relu(out)
-        out = self.linear2(out)
-        return out
+        x, _ = self.lstm1(x)
+        x, _ = self.lstm2(x)
+        x = self.linear1(x)
+        return x
  
-model = Model(ips, 100, 2, 1)
+model = Model(ips, 100, 5, 1)
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 loss_fn = nn.MSELoss()
 bs = 5
@@ -134,9 +122,9 @@ n_epochs = 100
 for epoch in range(n_epochs):
     model.train()
     for X_batch, y_batch in loader:
-        X_batch = torch.reshape(X_batch,(X_batch.shape[0],1,X_batch.shape[1]))
-        if X_batch.shape != torch.Size([bs,1,ips]):
-            continue
+        # X_batch = torch.reshape(X_batch,(X_batch.shape[0],1,X_batch.shape[1]))
+        # if X_batch.shape != torch.Size([bs,1,ips]):
+        #     continue
         y_pred = model.forward(X_batch)
         # y_pred,mem1,mem2 = model(X_batch)
         loss = loss_fn(y_pred, y_batch)
@@ -146,11 +134,13 @@ for epoch in range(n_epochs):
     # Validation
     model.eval()
     with torch.no_grad():
-        X_train_rsp = torch.reshape(X_train,(X_train.shape[0],1,X_train.shape[1]))
-        y_pred = model(X_train_rsp)
+        # X_train_rsp = torch.reshape(X_train,(X_train.shape[0],1,X_train.shape[1]))
+        # y_pred = model(X_train_rsp)
+        y_pred = model(X_train)
         train_rmse = np.sqrt(loss_fn(y_pred, y_train))
-        X_test_rsp = torch.reshape(X_test,(X_test.shape[0],1,X_test.shape[1]))
-        y_pred = model(X_test_rsp)
+        # X_test_rsp = torch.reshape(X_test,(X_test.shape[0],1,X_test.shape[1]))
+        # y_pred = model(X_test_rsp)
+        y_pred = model(X_test)
         test_rmse = np.sqrt(loss_fn(y_pred, y_test))
         r2 = R_oss(y_test,y_pred)
     if test_rmse < best_mse:
@@ -160,7 +150,7 @@ for epoch in range(n_epochs):
  
 ## Evaluate best model ----------------------------------------
 model.load_state_dict(best_weights)
-name = 'model2' + name + '.pth'
+name = 'model' + name + '.pth'
 torch.save(model, name)
 model.eval()
 y_pred = model(X_test)
